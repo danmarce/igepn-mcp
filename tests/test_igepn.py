@@ -268,3 +268,27 @@ def test_healthz_open_and_bearer_required():
     assert status(locked, "/mcp") == 401
     assert status(locked, "/mcp", [(b"authorization", b"Bearer s3cret")]) == 204
     assert status(BearerAuth(app, None), "/mcp") == 204 and status(BearerAuth(app, None), "/healthz") == 200
+
+
+# ---------------------------------------------------------------- MCP metadata (a new tool without it fails CI)
+
+TOOLS = {"last_quake", "latest_quakes", "volcano_status", "ig_alerts"}
+
+
+def test_every_tool_declares_title_and_all_four_hints(tmp_path):
+    tools = asyncio.run(build_server(Settings(db_path=tmp_path / "igepn.db")).list_tools())
+    assert {t.name for t in tools} == TOOLS
+    for t in tools:
+        wire = t.annotations.model_dump(by_alias=True)  # the camelCase JSON a client/directory actually reads
+        for hint in ("readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint"):
+            assert isinstance(wire.get(hint), bool), f"{t.name}.{hint} unset"
+        assert t.title and wire.get("title") == t.title, f"{t.name} missing title"
+        # all tools only read the local store: read-only, non-destructive, idempotent, closed-world
+        assert (wire["readOnlyHint"], wire["destructiveHint"], wire["idempotentHint"], wire["openWorldHint"]) == (
+            True, False, True, False), t.name
+
+
+def test_every_tool_is_exercised_by_a_test():
+    src = Path(__file__).read_text(encoding="utf-8")
+    for name in TOOLS:  # the pattern is built at runtime, so this line can't match itself
+        assert f'call(server, "{name}"' in src, f"{name} is never called by a test"

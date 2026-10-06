@@ -13,6 +13,10 @@ Design rationale: [CLAUDE.md](CLAUDE.md).
 | `volcano_status(volcano?)` | latest surface/internal activity level + trend (all volcanoes reported in the last 30 days, or one) |
 | `ig_alerts(hours=48, volcano?, n=10)` | `#IGAlInstante` bulletins (lahars, ash, activity) and special volcano reports, as written |
 
+Every tool declares a `title` and all four MCP hints explicitly. All four tools only read the local store,
+so each is read-only, non-destructive, idempotent and closed-world (`openWorldHint=false`); the poller, not a
+tool, is what fetches from Telegram. A test enforces this, so a new tool without metadata fails CI.
+
 Times come in Ecuador local time (`occurred_local_ec`, UTC−5) and UTC. Quakes keep IGEPN's `status`
 (`PRELIMINAR` / `REVISADO`, older posts `CONFIRMADO`). Every item carries a `post_url` (the Telegram post, with
 its image) for the UI to show.
@@ -81,6 +85,11 @@ volumes:
   igepn-data:
 ```
 One-time history backfill into the same volume: `docker compose run --rm igepn-mcp backfill --pages 700`.
+
+### Auth scope
+The server is deliberately auth-agnostic beyond an optional bearer token: run it over stdio, or HTTP + bearer on a
+private network. It has no OAuth and won't grow one. To publish it more widely (at work, on the internet), put a
+management layer in front of it, such as an MCP gateway or an auth proxy that handles OAuth, users and audit.
 
 mcpo entry (from a container on the same network):
 ```json

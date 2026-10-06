@@ -37,7 +37,15 @@ IGEPN's own words (Baja, Moderada, Alta, ...); do not translate them into offici
 `url` / `post_url` when the user wants the full report or the image.
 """
 
-READ_ONLY = ToolAnnotations(readOnlyHint=True, openWorldHint=False)
+
+
+# Explicit metadata on every tool (MCP clients assume the worst - destructive, open-world - when hints are omitted).
+# The title goes in both places the spec has carried it: Tool.title, and annotations.title for older clients.
+# Every tool here only reads this server's own SQLite store (the poller, not a tool, is what touches the web),
+# so all are read-only, non-destructive, idempotent and closed-world.
+def _read_hints(title: str) -> ToolAnnotations:
+    return ToolAnnotations(title=title, readOnlyHint=True, destructiveHint=False, idempotentHint=True,
+                           openWorldHint=False)
 
 
 def _out(obj: dict[str, Any]) -> str:
@@ -104,7 +112,7 @@ def build_server(settings: Settings) -> MCPServer:
             "post_url": post_url(row["msg_id"]),
         }
 
-    @mcp.tool(annotations=READ_ONLY, structured_output=False)
+    @mcp.tool(title="Last earthquake", annotations=_read_hints("Last earthquake"), structured_output=False)
     def last_quake() -> str:
         """The single most recent earthquake reported by the IGEPN, with its latest (revised if available)
         values. Use for "¿qué fue ese temblor?", "what was that earthquake just now", "did it just shake?".
@@ -133,7 +141,7 @@ def build_server(settings: Settings) -> MCPServer:
             }
         return _out(out)
 
-    @mcp.tool(annotations=READ_ONLY, structured_output=False)
+    @mcp.tool(title="Latest earthquakes", annotations=_read_hints("Latest earthquakes"), structured_output=False)
     def latest_quakes(hours: float = 24, min_mag: float | None = None, place: str | None = None, n: int = 15) -> str:
         """Recent earthquakes reported by the IGEPN, newest first, one entry per event (its latest report).
         Use for "earthquakes today / this week", "any tremors near Quito?", "strong quakes this month".
@@ -161,7 +169,7 @@ def build_server(settings: Settings) -> MCPServer:
         return _out({"source": "IGEPN", "hours": hours, "count": len(rows),
                      "quakes": [quake(r, now) for r in rows], "data": fresh})
 
-    @mcp.tool(annotations=READ_ONLY, structured_output=False)
+    @mcp.tool(title="Volcano status", annotations=_read_hints("Volcano status"), structured_output=False)
     def volcano_status(volcano: str | None = None) -> str:
         """Latest IGEPN activity report for Ecuadorian volcanoes: surface and internal activity level, each
         with its trend. Use for "how is the Sangay", "is Cotopaxi active", "volcano status".
@@ -216,7 +224,7 @@ def build_server(settings: Settings) -> MCPServer:
         ]
         return _out(out)
 
-    @mcp.tool(annotations=READ_ONLY, structured_output=False)
+    @mcp.tool(title="IGEPN alerts", annotations=_read_hints("IGEPN alerts"), structured_output=False)
     def ig_alerts(hours: float = 48, volcano: str | None = None, n: int = 10) -> str:
         """Recent IGEPN instant bulletins (#IGAlInstante: lahars, ash emissions, increased activity) and special
         volcano reports, newest first, as IGEPN wrote them. Use for "any volcano alerts", "is there ash from
